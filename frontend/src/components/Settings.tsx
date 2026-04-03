@@ -11,13 +11,16 @@ import {
   Shield,
   Mail,
   Keyboard,
+  Code,
+  RefreshCw,
+  Globe,
 } from 'lucide-react';
 import { useSettingsStore } from '../store/settingsStore';
 import { useEmailStore } from '../store/emailStore';
 import { AccountForm } from './AccountForm';
 import type { Account, ViewMode } from '../types';
 
-type SettingsTab = 'general' | 'accounts' | 'ai' | 'appearance' | 'security' | 'shortcuts';
+type SettingsTab = 'general' | 'accounts' | 'ai' | 'appearance' | 'security' | 'shortcuts' | 'developer';
 
 export function Settings() {
   const { theme, ai, display, settingsOpen, setSettingsOpen, toggleTheme, setAI, setDisplay, setViewMode } =
@@ -28,6 +31,9 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('accounts');
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [showAccountForm, setShowAccountForm] = useState(false);
+  const [devMode, setDevMode] = useState(() => localStorage.getItem('arcmail_dev_mode') === 'true');
+  const [devUrl, setDevUrl] = useState(() => localStorage.getItem('arcmail_dev_url') || 'http://localhost:5173');
+  const [devStatus, setDevStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   if (!settingsOpen) return null;
 
@@ -38,6 +44,7 @@ export function Settings() {
     { id: 'appearance', label: 'Appearance', icon: Sun },
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
+    { id: 'developer', label: 'Developer', icon: Code },
   ];
 
   const handleSaveAccount = (_account: Account) => {
@@ -308,6 +315,133 @@ export function Settings() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Developer Tab */}
+              {activeTab === 'developer' && (
+                <div className="space-y-4">
+                  <SectionTitle isDark={isDark}>Developer Mode</SectionTitle>
+                  <p className={`text-[12px] ${isDark ? 'text-old-text-tertiary' : 'text-ol-text-tertiary'}`}>
+                    Load the frontend from a remote URL instead of the bundled files. Useful for live development without recompiling.
+                  </p>
+
+                  <SettingRow isDark={isDark} label="Enable Dev Mode" description="Load UI from remote URL" icon={Code}>
+                    <button
+                      onClick={() => {
+                        const next = !devMode;
+                        setDevMode(next);
+                        localStorage.setItem('arcmail_dev_mode', String(next));
+                        if (!next) {
+                          localStorage.removeItem('arcmail_dev_url');
+                        }
+                      }}
+                      className={`w-10 h-5 rounded-full relative transition-colors ${
+                        devMode ? 'bg-accent' : isDark ? 'bg-old-surface-alt' : 'bg-ol-border'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
+                        devMode ? 'translate-x-5' : 'translate-x-0.5'
+                      }`} />
+                    </button>
+                  </SettingRow>
+
+                  {devMode && (
+                    <>
+                      <FormField label="Remote Frontend URL" isDark={isDark}>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <Globe size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? 'text-old-text-tertiary' : 'text-ol-text-tertiary'}`} />
+                            <input
+                              type="url"
+                              value={devUrl}
+                              onChange={(e) => {
+                                setDevUrl(e.target.value);
+                                localStorage.setItem('arcmail_dev_url', e.target.value);
+                              }}
+                              placeholder="http://localhost:5173"
+                              className={`w-full pl-9 pr-3 py-2 text-[13px] rounded border outline-none ${
+                                isDark
+                                  ? 'bg-old-surface-alt border-old-border text-old-text placeholder:text-old-text-tertiary focus:border-accent'
+                                  : 'bg-ol-bg border-ol-border text-ol-text placeholder:text-ol-text-tertiary focus:border-accent'
+                              }`}
+                            />
+                          </div>
+                          <button
+                            onClick={() => {
+                              setDevStatus('loading');
+                              const iframe = document.createElement('iframe');
+                              iframe.style.display = 'none';
+                              iframe.src = devUrl;
+                              iframe.onload = () => {
+                                setDevStatus('success');
+                                document.body.removeChild(iframe);
+                                setTimeout(() => setDevStatus('idle'), 2000);
+                              };
+                              iframe.onerror = () => {
+                                setDevStatus('error');
+                                document.body.removeChild(iframe);
+                                setTimeout(() => setDevStatus('idle'), 3000);
+                              };
+                              document.body.appendChild(iframe);
+                              setTimeout(() => {
+                                if (devStatus === 'loading') {
+                                  setDevStatus('error');
+                                  try { document.body.removeChild(iframe); } catch {}
+                                }
+                              }, 5000);
+                            }}
+                            className={`px-3 py-2 text-[12px] rounded border ${
+                              isDark
+                                ? 'border-old-border text-old-text-secondary hover:bg-old-hover'
+                                : 'border-ol-border text-ol-text-secondary hover:bg-ol-hover'
+                            }`}
+                            title="Test connection"
+                          >
+                            Test
+                          </button>
+                        </div>
+                        {devStatus === 'success' && (
+                          <p className="text-[11px] text-green-500 mt-1">Connection successful</p>
+                        )}
+                        {devStatus === 'error' && (
+                          <p className="text-[11px] text-red-500 mt-1">Could not reach URL</p>
+                        )}
+                      </FormField>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            window.location.href = devUrl;
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover text-white text-[13px] font-semibold rounded"
+                        >
+                          <Globe size={14} />
+                          Load Remote UI
+                        </button>
+                        <button
+                          onClick={() => {
+                            window.location.reload();
+                          }}
+                          className={`flex items-center gap-1.5 px-4 py-2 text-[13px] rounded border ${
+                            isDark
+                              ? 'border-old-border text-old-text-secondary hover:bg-old-hover'
+                              : 'border-ol-border text-ol-text-secondary hover:bg-ol-hover'
+                          }`}
+                        >
+                          <RefreshCw size={14} />
+                          Refresh UI
+                        </button>
+                      </div>
+
+                      <div className={`p-3 rounded border ${isDark ? 'bg-old-surface-alt border-old-border' : 'bg-ol-bg border-ol-border'}`}>
+                        <p className={`text-[11px] font-mono ${isDark ? 'text-old-text-tertiary' : 'text-ol-text-tertiary'}`}>
+                          To use: run <code className="text-accent">npm run dev</code> in the frontend directory,
+                          then click "Load Remote UI". Changes to React code will hot-reload instantly — no recompile needed.
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
