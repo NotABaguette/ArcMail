@@ -101,5 +101,8 @@ pub fn run() {
             commands::save_ai_settings,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            eprintln!("Fatal: failed to run tauri application: {e}");
+            std::process::exit(1);
+        });
 }

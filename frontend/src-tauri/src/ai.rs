@@ -74,7 +74,7 @@ struct StreamDelta {
 pub struct AiClient {
     http: Client,
     pub api_base: String,
-    pub api_key: String,
+    api_key: String,
     pub model: String,
     pub temperature: f64,
     last_request_ms: Arc<AtomicU64>,
@@ -98,7 +98,7 @@ impl AiClient {
     async fn rate_limit(&self) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
 
         let last = self.last_request_ms.load(Ordering::Relaxed);
@@ -112,7 +112,7 @@ impl AiClient {
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
         self.last_request_ms.store(now, Ordering::Relaxed);
     }

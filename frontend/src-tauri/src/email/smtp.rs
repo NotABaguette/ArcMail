@@ -151,7 +151,7 @@ pub async fn send_email(
                 let ct: ContentType = att
                     .content_type
                     .parse()
-                    .unwrap_or(ContentType::parse("application/octet-stream").unwrap());
+                    .unwrap_or(ContentType::TEXT_PLAIN);
                 let attachment =
                     LettreAttachment::new(att.filename.clone()).body(att.data.clone(), ct);
                 mixed = mixed.singlepart(attachment);

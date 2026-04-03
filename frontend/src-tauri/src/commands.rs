@@ -21,7 +21,7 @@ pub struct AppState {
 
 // ── Request/Response types ──────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct AddAccountRequest {
     pub name: String,
     pub email: String,
@@ -58,7 +58,7 @@ pub struct AttachmentData {
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct AiSettingsRequest {
     pub provider: String,
     pub api_base: String,
@@ -120,7 +120,7 @@ pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, S
     state.db.list_accounts().map_err(|e| e.to_string())
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(serde::Deserialize)]
 pub struct TestConnectionRequest {
     pub protocol: Option<String>,
     pub imap_host: Option<String>,
@@ -264,7 +264,9 @@ pub async fn sync_emails(
                 }
 
                 // Assign thread IDs
-                let _ = state.db.assign_thread_ids(&account_id);
+                if let Err(e) = state.db.assign_thread_ids(&account_id) {
+                    log::warn!("Failed to assign thread IDs for account {}: {}", account_id, e);
+                }
             }
 
             client.logout().await.ok();
@@ -904,7 +906,7 @@ pub async fn auto_discover_email(email: String) -> Result<AutoDiscoverResult, St
     })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct QuickAddAccountRequest {
     pub email: String,
     pub password: String,
@@ -982,7 +984,9 @@ pub async fn get_threads(
     offset: Option<i64>,
 ) -> Result<Vec<EmailThread>, String> {
     // Ensure thread IDs are assigned
-    let _ = state.db.assign_thread_ids(&account_id);
+    if let Err(e) = state.db.assign_thread_ids(&account_id) {
+        log::warn!("Failed to assign thread IDs for account {}: {}", account_id, e);
+    }
 
     state
         .db

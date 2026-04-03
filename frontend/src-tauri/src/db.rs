@@ -664,8 +664,7 @@ impl Database {
                 "SELECT COALESCE(MAX(uid), 0) FROM emails WHERE account_id = ?1 AND folder = ?2",
                 params![account_id, folder],
                 |row| row.get(0),
-            )
-            .unwrap_or(0);
+            )?;
         Ok(uid)
     }
 
@@ -1413,17 +1412,17 @@ fn normalize_subject(subject: &str) -> String {
     loop {
         let lower = s.to_lowercase();
         if lower.starts_with("re: ") {
-            s = s[4..].trim().to_string();
+            s = s.get(4..).unwrap_or_default().trim().to_string();
         } else if lower.starts_with("fwd: ") {
-            s = s[5..].trim().to_string();
+            s = s.get(5..).unwrap_or_default().trim().to_string();
         } else if lower.starts_with("fw: ") {
-            s = s[4..].trim().to_string();
+            s = s.get(4..).unwrap_or_default().trim().to_string();
         } else if lower.starts_with("re:") {
-            s = s[3..].trim().to_string();
+            s = s.get(3..).unwrap_or_default().trim().to_string();
         } else if lower.starts_with("fwd:") {
-            s = s[4..].trim().to_string();
+            s = s.get(4..).unwrap_or_default().trim().to_string();
         } else if lower.starts_with("fw:") {
-            s = s[3..].trim().to_string();
+            s = s.get(3..).unwrap_or_default().trim().to_string();
         } else {
             break;
         }

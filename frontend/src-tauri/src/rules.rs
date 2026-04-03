@@ -121,24 +121,39 @@ pub fn apply_rules(db: &Database, email: &Email) -> Result<RuleApplicationResult
 
         // Apply actions
         if let Some(ref folder) = actions.move_to_folder {
-            let _ = db.move_email(&email.id, folder);
-            actions_applied.push(format!("moved to {}", folder));
+            if let Err(e) = db.move_email(&email.id, folder) {
+                log::warn!("Rule '{}': failed to move email {} to {}: {}", rule.name, email.id, folder, e);
+            } else {
+                actions_applied.push(format!("moved to {}", folder));
+            }
         }
         if actions.mark_read == Some(true) {
-            let _ = db.update_email_read(&email.id, true);
-            actions_applied.push("marked read".into());
+            if let Err(e) = db.update_email_read(&email.id, true) {
+                log::warn!("Rule '{}': failed to mark email {} as read: {}", rule.name, email.id, e);
+            } else {
+                actions_applied.push("marked read".into());
+            }
         }
         if let Some(ref cat) = actions.set_category {
-            let _ = db.set_email_category(&email.id, Some(cat));
-            actions_applied.push(format!("category set to {}", cat));
+            if let Err(e) = db.set_email_category(&email.id, Some(cat)) {
+                log::warn!("Rule '{}': failed to set category on email {}: {}", rule.name, email.id, e);
+            } else {
+                actions_applied.push(format!("category set to {}", cat));
+            }
         }
         if let Some(ref flag) = actions.set_flag {
-            let _ = db.set_email_flag(&email.id, Some(flag));
-            actions_applied.push(format!("flag set to {}", flag));
+            if let Err(e) = db.set_email_flag(&email.id, Some(flag)) {
+                log::warn!("Rule '{}': failed to set flag on email {}: {}", rule.name, email.id, e);
+            } else {
+                actions_applied.push(format!("flag set to {}", flag));
+            }
         }
         if actions.delete == Some(true) {
-            let _ = db.update_email_deleted(&email.id, true);
-            actions_applied.push("deleted".into());
+            if let Err(e) = db.update_email_deleted(&email.id, true) {
+                log::warn!("Rule '{}': failed to delete email {}: {}", rule.name, email.id, e);
+            } else {
+                actions_applied.push("deleted".into());
+            }
         }
         // forward_to would need SMTP integration; record the intent
         if let Some(ref addr) = actions.forward_to {

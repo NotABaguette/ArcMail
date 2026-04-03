@@ -86,7 +86,7 @@ impl Pop3Client {
             .await?;
         let resp = client.read_response().await?;
         if !resp.starts_with("+OK") {
-            return Err(Pop3Error::Auth(format!("PASS rejected: {resp}")));
+            return Err(Pop3Error::Auth("PASS rejected: authentication failed".to_string()));
         }
 
         Ok(client)
