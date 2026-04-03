@@ -33,14 +33,8 @@ pub fn run() {
 
             let db_path = app_dir.join("arcmail.db");
 
-            let db = match Database::new(&db_path) {
-                Ok(db) => db,
-                Err(e) => {
-                    eprintln!("Database init error: {e}, trying in-memory fallback");
-                    Database::new(std::path::Path::new(":memory:"))
-                        .map_err(|e2| format!("Even in-memory DB failed: {e2}"))?
-                }
-            };
+            let db = Database::new(&db_path)
+                .map_err(|e| format!("Failed to initialize database at {}: {e}", db_path.display()))?;
 
             let master_password = crypto::get_master_password();
 
