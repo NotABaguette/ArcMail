@@ -1,0 +1,43 @@
+[package]
+name = "app"
+version = "0.1.0"
+description = "ArcMail - A Tauri Email Client"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+tauri = { version = "2.10.3", features = ["tray-icon"] }
+tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
+tokio = { version = "1", features = ["full"] }
+async-imap = "0.10"
+async-native-tls = "0.5"
+lettre = { version = "0.11", features = ["tokio1-native-tls", "builder", "hostname"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json", "native-tls", "stream"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+aes-gcm = "0.10"
+sha2 = "0.10"
+rand = "0.8"
+mailparse = "0.15"
+thiserror = "1"
+futures = "0.3"
+tokio-native-tls = "0.3"
+async-std = { version = "1", features = ["attributes"] }
+hostname = "0.4"
