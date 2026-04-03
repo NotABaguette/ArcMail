@@ -75,6 +75,49 @@ jobs:
           tauriScript: npx tauri
           args: --target ${{ matrix.target }}
 
+      - name: Smoke test (Linux)
+        if: contains(matrix.platform, 'ubuntu')
+        run: |
+          # Start app with timeout — verify it launches without crashing
+          timeout 5 xvfb-run frontend/src-tauri/target/${{ matrix.target }}/release/app 2>&1 || EXIT_CODE=$?
+          # Exit code 124 = timeout (expected — app runs until killed)
+          # Exit code 0 = app exited cleanly
+          # Any other code = crash
+          if [ "${EXIT_CODE:-0}" != "124" ] && [ "${EXIT_CODE:-0}" != "0" ]; then
+            echo "SMOKE TEST FAILED: app crashed with exit code $EXIT_CODE"
+            exit 1
+          fi
+          echo "Smoke test passed (app launched successfully)"
+
+      - name: Smoke test (macOS)
+        if: contains(matrix.platform, 'macos')
+        run: |
+          APP_PATH=$(find frontend/src-tauri/target -name "ArcMail.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            timeout 5 "$APP_PATH/Contents/MacOS/app" 2>&1 || EXIT_CODE=$?
+            if [ "${EXIT_CODE:-0}" != "124" ] && [ "${EXIT_CODE:-0}" != "0" ]; then
+              echo "SMOKE TEST FAILED: app crashed with exit code $EXIT_CODE"
+              exit 1
+            fi
+            echo "Smoke test passed"
+          fi
+
+      - name: Smoke test (Windows)
+        if: contains(matrix.platform, 'windows')
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "frontend\src-tauri\target" -Filter "ArcMail.exe" -Recurse | Select-Object -First 1
+          if ($exe) {
+            $proc = Start-Process -FilePath $exe.FullName -PassThru
+            Start-Sleep -Seconds 5
+            if ($proc.HasExited -and $proc.ExitCode -ne 0) {
+              Write-Error "SMOKE TEST FAILED: app crashed with exit code $($proc.ExitCode)"
+              exit 1
+            }
+            if (!$proc.HasExited) { $proc.Kill() }
+            Write-Output "Smoke test passed"
+          }
+
       - name: Upload Linux artifacts
         if: contains(matrix.platform, 'ubuntu')
         uses: actions/upload-artifact@v4
