@@ -16,11 +16,14 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            // Initialize database — use a safe fallback path if app_data_dir fails
+            // IMPORTANT: This closure must NEVER return Err on macOS.
+            // Returning Err causes tao's did_finish_launching to panic across
+            // the Objective-C FFI boundary, resulting in SIGABRT.
+            // Instead, we handle all errors internally and exit cleanly if fatal.
+
             let app_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,
                 Err(_) => {
-                    // Fallback to home directory
                     let home = dirs_next::home_dir()
                         .unwrap_or_else(|| std::path::PathBuf::from("."));
                     home.join(".arcmail")
@@ -28,13 +31,19 @@ pub fn run() {
             };
 
             if let Err(e) = std::fs::create_dir_all(&app_dir) {
-                eprintln!("Warning: could not create app data dir: {e}");
+                eprintln!("Fatal: could not create app data dir {}: {e}", app_dir.display());
+                std::process::exit(1);
             }
 
             let db_path = app_dir.join("arcmail.db");
 
-            let db = Database::new(&db_path)
-                .map_err(|e| format!("Failed to initialize database at {}: {e}", db_path.display()))?;
+            let db = match Database::new(&db_path) {
+                Ok(db) => db,
+                Err(e) => {
+                    eprintln!("Fatal: could not initialize database at {}: {e}", db_path.display());
+                    std::process::exit(1);
+                }
+            };
 
             let master_password = crypto::get_master_password();
 
