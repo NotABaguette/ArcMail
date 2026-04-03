@@ -16,16 +16,31 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            // Initialize database
-            let app_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data dir");
-            std::fs::create_dir_all(&app_dir).expect("Failed to create app data dir");
+            // Initialize database — use a safe fallback path if app_data_dir fails
+            let app_dir = match app.path().app_data_dir() {
+                Ok(dir) => dir,
+                Err(_) => {
+                    // Fallback to home directory
+                    let home = dirs_next::home_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."));
+                    home.join(".arcmail")
+                }
+            };
+
+            if let Err(e) = std::fs::create_dir_all(&app_dir) {
+                eprintln!("Warning: could not create app data dir: {e}");
+            }
+
             let db_path = app_dir.join("arcmail.db");
 
-            let db =
-                Database::new(&db_path).expect("Failed to initialize database");
+            let db = match Database::new(&db_path) {
+                Ok(db) => db,
+                Err(e) => {
+                    eprintln!("Database init error: {e}, trying in-memory fallback");
+                    Database::new(std::path::Path::new(":memory:"))
+                        .map_err(|e2| format!("Even in-memory DB failed: {e2}"))?
+                }
+            };
 
             let master_password = crypto::get_master_password();
 
