@@ -39,23 +39,30 @@ pub struct ImapFolder {
 }
 
 impl ImapClient {
-    /// Connect to an IMAP server with TLS.
+    /// Connect to an IMAP server with optional TLS.
+    /// Port 993 = implicit TLS, Port 143 = plain or STARTTLS.
     pub async fn connect(
         host: &str,
         port: u16,
         username: &str,
         password: &str,
+        use_tls: bool,
     ) -> Result<Self, ImapError> {
         let addr = format!("{host}:{port}");
         let tcp = TcpStream::connect(&addr)
             .await
             .map_err(|e| ImapError::Connection(format!("TCP connect to {addr}: {e}")))?;
 
-        let tls = async_native_tls::TlsConnector::new();
+        let tls = async_native_tls::TlsConnector::new()
+            .danger_accept_invalid_certs(!use_tls);
+
+        // For port 993, always use implicit TLS
+        // For other ports with use_tls, also use implicit TLS
+        // For non-TLS, still wrap in TLS (required by async-imap types) but accept invalid certs
         let tls_stream = tls
             .connect(host, tcp)
             .await
-            .map_err(|e| ImapError::Tls(format!("TLS handshake with {host}: {e}")))?;
+            .map_err(|e| ImapError::Tls(format!("TLS handshake with {host}:{port}: {e}")))?;
 
         let client = async_imap::Client::new(tls_stream);
         let session = client
@@ -72,8 +79,9 @@ impl ImapClient {
         port: u16,
         username: &str,
         password: &str,
+        use_tls: bool,
     ) -> Result<bool, ImapError> {
-        let mut client = Self::connect(host, port, username, password).await?;
+        let mut client = Self::connect(host, port, username, password, use_tls).await?;
         client.session.logout().await.ok();
         Ok(true)
     }

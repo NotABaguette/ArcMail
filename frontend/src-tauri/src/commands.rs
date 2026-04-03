@@ -115,37 +115,68 @@ pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, S
     state.db.list_accounts().map_err(|e| e.to_string())
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct TestConnectionRequest {
+    pub protocol: Option<String>,
+    pub imap_host: Option<String>,
+    pub imap_port: Option<u16>,
+    pub pop3_host: Option<String>,
+    pub pop3_port: Option<u16>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub use_tls: Option<bool>,
+    pub id: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct TestConnectionResult {
+    pub success: bool,
+    pub message: String,
+}
+
 #[tauri::command]
 pub async fn test_connection(
     state: State<'_, AppState>,
-    account_id: String,
-) -> Result<bool, String> {
-    let account = state.db.get_account(&account_id).map_err(|e| e.to_string())?;
-    let password =
-        crypto::decrypt(&account.encrypted_password, &state.master_password).map_err(|e| e.to_string())?;
+    account: TestConnectionRequest,
+) -> Result<TestConnectionResult, String> {
+    let protocol = account.protocol.unwrap_or_else(|| "imap".to_string());
+    let imap_host = account.imap_host.unwrap_or_default();
+    let imap_port = account.imap_port.unwrap_or(993);
+    let pop3_host = account.pop3_host.unwrap_or_default();
+    let pop3_port = account.pop3_port.unwrap_or(995);
+    let username = account.username.unwrap_or_default();
+    let password = account.password.unwrap_or_default();
+    let use_tls = account.use_tls.unwrap_or(true);
 
-    match account.protocol.as_str() {
+    match protocol.as_str() {
         "imap" => {
-            ImapClient::test_connection(
-                &account.imap_host,
-                account.imap_port,
-                &account.username,
-                &password,
-            )
-            .await
-            .map_err(|e| e.to_string())
+            match ImapClient::test_connection(&imap_host, imap_port, &username, &password, use_tls).await {
+                Ok(_) => Ok(TestConnectionResult {
+                    success: true,
+                    message: format!("IMAP connected to {}:{}", imap_host, imap_port),
+                }),
+                Err(e) => Ok(TestConnectionResult {
+                    success: false,
+                    message: e.to_string(),
+                }),
+            }
         }
         "pop3" => {
-            Pop3Client::test_connection(
-                &account.pop3_host,
-                account.pop3_port,
-                &account.username,
-                &password,
-            )
-            .await
-            .map_err(|e| e.to_string())
+            match Pop3Client::test_connection(&pop3_host, pop3_port, &username, &password).await {
+                Ok(_) => Ok(TestConnectionResult {
+                    success: true,
+                    message: format!("POP3 connected to {}:{}", pop3_host, pop3_port),
+                }),
+                Err(e) => Ok(TestConnectionResult {
+                    success: false,
+                    message: e.to_string(),
+                }),
+            }
         }
-        other => Err(format!("Unknown protocol: {other}")),
+        other => Ok(TestConnectionResult {
+            success: false,
+            message: format!("Unknown protocol: {other}"),
+        }),
     }
 }
 
@@ -173,6 +204,7 @@ pub async fn sync_emails(
                 account.imap_port,
                 &account.username,
                 &password,
+                account.use_tls,
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -389,6 +421,7 @@ pub async fn mark_read(
             account.imap_port,
             &account.username,
             &password,
+            account.use_tls,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -438,6 +471,7 @@ pub async fn star_email(
             account.imap_port,
             &account.username,
             &password,
+            account.use_tls,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -487,6 +521,7 @@ pub async fn delete_email(
             account.imap_port,
             &account.username,
             &password,
+            account.use_tls,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -530,6 +565,7 @@ pub async fn move_email(
             account.imap_port,
             &account.username,
             &password,
+            account.use_tls,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -587,6 +623,7 @@ pub async fn sync_folders(
                 account.imap_port,
                 &account.username,
                 &password,
+                account.use_tls,
             )
             .await
             .map_err(|e| e.to_string())?;
