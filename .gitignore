@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+*.AppImage
+*.deb
+*.rpm
+*.dmg
+*.msi
+*.exe
+.DS_Store
