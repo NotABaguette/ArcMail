@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Theme, AISettings, DisplayPreferences } from '../types';
+import type { Theme, AISettings, DisplayPreferences, ViewMode } from '../types';
 
 interface SettingsState {
   theme: Theme;
@@ -11,11 +11,12 @@ interface SettingsState {
   toggleTheme: () => void;
   setAI: (ai: Partial<AISettings>) => void;
   setDisplay: (prefs: Partial<DisplayPreferences>) => void;
+  setViewMode: (mode: ViewMode) => void;
   setSettingsOpen: (open: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  theme: 'dark',
+  theme: 'light',
   ai: {
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
@@ -27,6 +28,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     compactMode: false,
     showPreview: true,
     showAvatars: true,
+    viewMode: 'comfortable',
+    readingPanePosition: 'right',
   },
   settingsOpen: false,
 
@@ -37,5 +40,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set((state) => ({ ai: { ...state.ai, ...ai } })),
   setDisplay: (prefs) =>
     set((state) => ({ display: { ...state.display, ...prefs } })),
+  setViewMode: (viewMode) =>
+    set((state) => ({ display: { ...state.display, viewMode } })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
 }));

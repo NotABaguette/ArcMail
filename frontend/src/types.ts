@@ -50,10 +50,13 @@ export interface Email {
   date: string;
   isRead: boolean;
   isStarred: boolean;
+  isFlagged: boolean;
   hasAttachments: boolean;
   attachments: Attachment[];
   priority: Priority;
   labels: string[];
+  threadId?: string;
+  categoryColor?: string;
 }
 
 export interface Contact {
@@ -74,6 +77,8 @@ export interface ComposeState {
   attachments: File[];
   replyToId?: string;
   mode: 'new' | 'reply' | 'replyAll' | 'forward';
+  importance: 'high' | 'normal' | 'low';
+  fromAccountId?: string;
 }
 
 export interface AIPanelState {
@@ -96,13 +101,43 @@ export interface AISettings {
   temperature: number;
 }
 
+export type ViewMode = 'compact' | 'comfortable' | 'spacious';
+
 export interface DisplayPreferences {
   compactMode: boolean;
   showPreview: boolean;
   showAvatars: boolean;
+  viewMode: ViewMode;
+  readingPanePosition: 'right' | 'bottom' | 'off';
 }
 
 export type Theme = 'dark' | 'light';
 
 export type SortOption = 'date' | 'priority' | 'unread' | 'sender' | 'subject';
 export type SortDirection = 'asc' | 'desc';
+
+export type InboxTab = 'focused' | 'other';
+
+export interface SearchFilter {
+  from?: string;
+  hasAttachment?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
+  folder?: string;
+  isUnread?: boolean;
+  isFlagged?: boolean;
+}
+
+export interface EmailThread {
+  id: string;
+  subject: string;
+  emails: Email[];
+  lastDate: string;
+  unreadCount: number;
+  isExpanded: boolean;
+}
+
+export interface Category {
+  name: string;
+  color: string;
+}

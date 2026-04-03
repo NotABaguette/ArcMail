@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { CommandBar } from './components/CommandBar';
 import { EmailList } from './components/EmailList';
 import { EmailView } from './components/EmailView';
 import { ComposeModal } from './components/ComposeModal';
 import { AIPanel } from './components/AIPanel';
 import { Settings } from './components/Settings';
+import { StatusBar } from './components/StatusBar';
 import { useSettingsStore } from './store/settingsStore';
 import { useEmailStore } from './store/emailStore';
 
@@ -15,11 +17,7 @@ function App() {
   // Apply theme class to document
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
-    if (theme === 'dark') {
-      document.documentElement.style.colorScheme = 'dark';
-    } else {
-      document.documentElement.style.colorScheme = 'light';
-    }
+    document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
   }, [theme]);
 
   // Load contacts on mount
@@ -27,30 +25,37 @@ function App() {
     loadContacts();
   }, [loadContacts]);
 
+  const isDark = theme === 'dark';
+
   return (
     <div
-      className={`h-screen flex ${
-        theme === 'dark'
-          ? 'bg-navy-900 text-navy-300'
-          : 'bg-white text-gray-700'
+      className={`h-screen flex flex-col ${
+        isDark ? 'bg-old-bg text-old-text' : 'bg-ol-bg text-ol-text'
       }`}
     >
-      {/* Sidebar - Folder navigation */}
-      <Sidebar />
+      {/* Top Command Bar */}
+      <CommandBar />
 
-      {/* Email List - Middle column */}
-      <EmailList />
+      {/* Main content area */}
+      <div className="flex-1 flex min-h-0">
+        {/* Left Sidebar - Folder navigation */}
+        <Sidebar />
 
-      {/* Email View - Reading pane */}
-      <EmailView />
+        {/* Email List - Middle column */}
+        <EmailList />
 
-      {/* AI Panel - Conditional right panel */}
-      <AIPanel />
+        {/* Email View - Reading pane */}
+        <EmailView />
 
-      {/* Compose Modal - Floating */}
+        {/* AI Panel - Conditional right panel */}
+        <AIPanel />
+      </div>
+
+      {/* Bottom Status Bar */}
+      <StatusBar />
+
+      {/* Floating overlays */}
       <ComposeModal />
-
-      {/* Settings Modal */}
       <Settings />
     </div>
   );

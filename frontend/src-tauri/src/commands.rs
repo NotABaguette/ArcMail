@@ -1,7 +1,12 @@
 use crate::ai::AiClient;
+use crate::autodiscover;
 use crate::crypto;
-use crate::db::{Account, AiSettings, Database, Email, Folder};
+use crate::db::{
+    Account, AiSettings, Database, Email, EmailThread, Folder, OutboxEntry, SearchFilters,
+};
 use crate::email::{imap::ImapClient, pop3::Pop3Client, smtp};
+use crate::rules::{self, Rule, RuleActions, RuleConditions};
+use crate::shortcuts::{self, ShortcutMap};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -136,7 +141,7 @@ pub struct TestConnectionResult {
 
 #[tauri::command]
 pub async fn test_connection(
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     account: TestConnectionRequest,
 ) -> Result<TestConnectionResult, String> {
     let protocol = account.protocol.unwrap_or_else(|| "imap".to_string());
@@ -241,11 +246,25 @@ pub async fn sync_emails(
                     uid,
                     size_bytes: 0,
                     created_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                    thread_id: None,
+                    category: None,
+                    flag: None,
+                    snoozed_until: None,
                 })
                 .collect();
 
             if !db_emails.is_empty() {
                 state.db.insert_emails(&db_emails).map_err(|e| e.to_string())?;
+
+                // Apply rules to newly synced emails
+                for email in &db_emails {
+                    if let Err(e) = rules::apply_rules(&state.db, email) {
+                        log::warn!("Failed to apply rules to email {}: {}", email.id, e);
+                    }
+                }
+
+                // Assign thread IDs
+                let _ = state.db.assign_thread_ids(&account_id);
             }
 
             client.logout().await.ok();
@@ -299,8 +318,16 @@ pub async fn sync_emails(
                                 uid: msg.id,
                                 size_bytes: msg.size as i64,
                                 created_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                                thread_id: None,
+                                category: None,
+                                flag: None,
+                                snoozed_until: None,
                             };
                             state.db.insert_email(&email).map_err(|e| e.to_string())?;
+                            // Apply rules
+                            if let Err(e) = rules::apply_rules(&state.db, &email) {
+                                log::warn!("Failed to apply rules to email {}: {}", email.id, e);
+                            }
                             new_count += 1;
                         }
                         Err(e) => log::warn!("Failed to retrieve POP3 msg {}: {e}", msg.id),
@@ -849,5 +876,424 @@ pub async fn save_ai_settings(
     state
         .db
         .save_ai_settings(&settings)
+        .map_err(|e| e.to_string())
+}
+
+// ── Auto-discover commands ──────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct AutoDiscoverResult {
+    pub imap_host: String,
+    pub imap_port: u16,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub provider_name: String,
+    pub use_tls: bool,
+}
+
+#[tauri::command]
+pub async fn auto_discover_email(email: String) -> Result<AutoDiscoverResult, String> {
+    let settings = autodiscover::discover_settings(&email).await?;
+    Ok(AutoDiscoverResult {
+        imap_host: settings.imap_host,
+        imap_port: settings.imap_port,
+        smtp_host: settings.smtp_host,
+        smtp_port: settings.smtp_port,
+        provider_name: settings.provider_name,
+        use_tls: settings.use_tls,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QuickAddAccountRequest {
+    pub email: String,
+    pub password: String,
+    pub name: Option<String>,
+}
+
+#[tauri::command]
+pub async fn quick_add_account(
+    state: State<'_, AppState>,
+    request: QuickAddAccountRequest,
+) -> Result<Account, String> {
+    // 1. Auto-discover settings
+    let settings = autodiscover::discover_settings(&request.email)
+        .await
+        .map_err(|e| format!("Auto-discovery failed: {}", e))?;
+
+    // 2. Test IMAP connection
+    let test_result = ImapClient::test_connection(
+        &settings.imap_host,
+        settings.imap_port,
+        &request.email,
+        &request.password,
+        settings.use_tls,
+    )
+    .await;
+
+    if let Err(ref e) = test_result {
+        return Err(format!(
+            "Connection test failed for {} ({}:{}): {}",
+            settings.provider_name, settings.imap_host, settings.imap_port, e
+        ));
+    }
+
+    // 3. Encrypt password and save account
+    let encrypted_password =
+        crypto::encrypt(&request.password, &state.master_password).map_err(|e| e.to_string())?;
+
+    let display_name = request
+        .name
+        .unwrap_or_else(|| request.email.split('@').next().unwrap_or("User").to_string());
+
+    let account = Account {
+        id: Uuid::new_v4().to_string(),
+        name: display_name,
+        email: request.email.clone(),
+        imap_host: settings.imap_host,
+        imap_port: settings.imap_port,
+        pop3_host: String::new(),
+        pop3_port: 995,
+        smtp_host: settings.smtp_host,
+        smtp_port: settings.smtp_port,
+        username: request.email,
+        encrypted_password,
+        protocol: "imap".to_string(),
+        use_tls: settings.use_tls,
+        created_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+
+    state
+        .db
+        .insert_account(&account)
+        .map_err(|e| e.to_string())?;
+
+    Ok(account)
+}
+
+// ── Threading commands ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_threads(
+    state: State<'_, AppState>,
+    account_id: String,
+    folder: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<EmailThread>, String> {
+    // Ensure thread IDs are assigned
+    let _ = state.db.assign_thread_ids(&account_id);
+
+    state
+        .db
+        .get_threads(
+            &account_id,
+            &folder,
+            limit.unwrap_or(50),
+            offset.unwrap_or(0),
+        )
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_thread_messages(
+    state: State<'_, AppState>,
+    thread_id: String,
+) -> Result<Vec<Email>, String> {
+    state
+        .db
+        .get_thread_messages(&thread_id)
+        .map_err(|e| e.to_string())
+}
+
+// ── Category & Flag commands ────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn set_category(
+    state: State<'_, AppState>,
+    email_id: String,
+    category: Option<String>,
+) -> Result<(), String> {
+    // Validate category
+    if let Some(ref cat) = category {
+        let valid = ["Blue", "Green", "Yellow", "Orange", "Red", "Purple"];
+        if !valid.contains(&cat.as_str()) {
+            return Err(format!(
+                "Invalid category '{}'. Valid categories: {:?}",
+                cat, valid
+            ));
+        }
+    }
+    state
+        .db
+        .set_email_category(&email_id, category.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_flag(
+    state: State<'_, AppState>,
+    email_id: String,
+    flag: Option<String>,
+) -> Result<(), String> {
+    if let Some(ref f) = flag {
+        let valid = ["followup", "complete", "none"];
+        if !valid.contains(&f.as_str()) {
+            return Err(format!(
+                "Invalid flag '{}'. Valid flags: {:?}",
+                f, valid
+            ));
+        }
+    }
+    state
+        .db
+        .set_email_flag(&email_id, flag.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct CategoryInfo {
+    pub name: String,
+    pub count: i32,
+}
+
+#[tauri::command]
+pub async fn get_categories(
+    state: State<'_, AppState>,
+    account_id: String,
+) -> Result<Vec<CategoryInfo>, String> {
+    let valid_categories = ["Blue", "Green", "Yellow", "Orange", "Red", "Purple"];
+    let mut results = Vec::new();
+    for cat in &valid_categories {
+        let emails = state
+            .db
+            .get_emails_by_category(&account_id, cat, 0)
+            .map_err(|e| e.to_string())?;
+        results.push(CategoryInfo {
+            name: cat.to_string(),
+            count: emails.len() as i32,
+        });
+    }
+    Ok(results)
+}
+
+// ── Rules commands ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRuleRequest {
+    pub name: String,
+    pub conditions: RuleConditions,
+    pub actions: RuleActions,
+    pub enabled: Option<bool>,
+}
+
+#[tauri::command]
+pub async fn create_rule(
+    state: State<'_, AppState>,
+    request: CreateRuleRequest,
+) -> Result<Rule, String> {
+    let rule = Rule {
+        id: Uuid::new_v4().to_string(),
+        name: request.name,
+        conditions_json: serde_json::to_string(&request.conditions)
+            .map_err(|e| e.to_string())?,
+        actions_json: serde_json::to_string(&request.actions).map_err(|e| e.to_string())?,
+        enabled: request.enabled.unwrap_or(true),
+        sort_order: 0,
+    };
+
+    state.db.create_rule(&rule).map_err(|e| e.to_string())?;
+    Ok(rule)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateRuleRequest {
+    pub id: String,
+    pub name: String,
+    pub conditions: RuleConditions,
+    pub actions: RuleActions,
+    pub enabled: bool,
+    pub sort_order: Option<i32>,
+}
+
+#[tauri::command]
+pub async fn update_rule(
+    state: State<'_, AppState>,
+    request: UpdateRuleRequest,
+) -> Result<(), String> {
+    let rule = Rule {
+        id: request.id,
+        name: request.name,
+        conditions_json: serde_json::to_string(&request.conditions)
+            .map_err(|e| e.to_string())?,
+        actions_json: serde_json::to_string(&request.actions).map_err(|e| e.to_string())?,
+        enabled: request.enabled,
+        sort_order: request.sort_order.unwrap_or(0),
+    };
+
+    state.db.update_rule(&rule).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_rule(
+    state: State<'_, AppState>,
+    rule_id: String,
+) -> Result<(), String> {
+    state.db.delete_rule(&rule_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_rules(state: State<'_, AppState>) -> Result<Vec<Rule>, String> {
+    state.db.list_rules().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn reorder_rules(
+    state: State<'_, AppState>,
+    rule_ids: Vec<String>,
+) -> Result<(), String> {
+    state
+        .db
+        .reorder_rules(&rule_ids)
+        .map_err(|e| e.to_string())
+}
+
+// ── Snooze commands ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn snooze_email(
+    state: State<'_, AppState>,
+    email_id: String,
+    until_datetime: String,
+) -> Result<(), String> {
+    // Validate datetime format
+    chrono::NaiveDateTime::parse_from_str(&until_datetime, "%Y-%m-%d %H:%M:%S")
+        .map_err(|_| "Invalid datetime format. Use YYYY-MM-DD HH:MM:SS".to_string())?;
+
+    state
+        .db
+        .snooze_email(&email_id, &until_datetime)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn unsnooze_email(
+    state: State<'_, AppState>,
+    email_id: String,
+) -> Result<(), String> {
+    state
+        .db
+        .unsnooze_email(&email_id)
+        .map_err(|e| e.to_string())
+}
+
+// ── Schedule Send commands ──────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct ScheduleSendRequest {
+    pub account_id: String,
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
+    pub bcc: Vec<String>,
+    pub subject: String,
+    pub body_text: String,
+    pub body_html: Option<String>,
+    pub attachments: Vec<AttachmentData>,
+    pub in_reply_to: Option<String>,
+    pub references: Option<String>,
+    pub send_at: String,
+}
+
+#[tauri::command]
+pub async fn schedule_send(
+    state: State<'_, AppState>,
+    request: ScheduleSendRequest,
+) -> Result<OutboxEntry, String> {
+    // Validate send_at
+    chrono::NaiveDateTime::parse_from_str(&request.send_at, "%Y-%m-%d %H:%M:%S")
+        .map_err(|_| "Invalid datetime format. Use YYYY-MM-DD HH:MM:SS".to_string())?;
+
+    let entry = OutboxEntry {
+        id: Uuid::new_v4().to_string(),
+        account_id: request.account_id,
+        to_addrs: serde_json::to_string(&request.to).unwrap_or_default(),
+        cc_addrs: serde_json::to_string(&request.cc).unwrap_or_default(),
+        bcc_addrs: serde_json::to_string(&request.bcc).unwrap_or_default(),
+        subject: request.subject,
+        body_text: request.body_text,
+        body_html: request.body_html,
+        attachments_json: serde_json::to_string(&request.attachments).unwrap_or_default(),
+        in_reply_to: request.in_reply_to,
+        references: request.references,
+        scheduled_send_at: request.send_at,
+        created_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+
+    state
+        .db
+        .insert_outbox_entry(&entry)
+        .map_err(|e| e.to_string())?;
+
+    Ok(entry)
+}
+
+#[tauri::command]
+pub async fn list_scheduled(
+    state: State<'_, AppState>,
+    account_id: String,
+) -> Result<Vec<OutboxEntry>, String> {
+    state
+        .db
+        .list_outbox(&account_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn cancel_scheduled(
+    state: State<'_, AppState>,
+    entry_id: String,
+) -> Result<(), String> {
+    state
+        .db
+        .delete_outbox_entry(&entry_id)
+        .map_err(|e| e.to_string())
+}
+
+// ── Keyboard Shortcuts commands ─────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_shortcuts(state: State<'_, AppState>) -> Result<ShortcutMap, String> {
+    match state.db.get_shortcuts_json().map_err(|e| e.to_string())? {
+        Some(json) => {
+            serde_json::from_str(&json).map_err(|e| e.to_string())
+        }
+        None => Ok(shortcuts::get_default_shortcuts()),
+    }
+}
+
+#[tauri::command]
+pub async fn set_shortcuts(
+    state: State<'_, AppState>,
+    shortcuts_map: ShortcutMap,
+) -> Result<(), String> {
+    let json = serde_json::to_string(&shortcuts_map).map_err(|e| e.to_string())?;
+    state
+        .db
+        .save_shortcuts_json(&json)
+        .map_err(|e| e.to_string())
+}
+
+// ── Advanced Search command ─────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn search_emails_filtered(
+    state: State<'_, AppState>,
+    filters: SearchFilters,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<Email>, String> {
+    state
+        .db
+        .search_emails_filtered(&filters, limit.unwrap_or(50), offset.unwrap_or(0))
         .map_err(|e| e.to_string())
 }

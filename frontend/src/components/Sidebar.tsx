@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Inbox,
   Send,
@@ -6,12 +6,11 @@ import {
   Archive,
   ShieldAlert,
   Trash2,
-  Plus,
-  Settings,
   ChevronDown,
+  ChevronRight,
   Folder,
-  PanelLeftClose,
-  PanelLeft,
+  Star,
+  Settings,
 } from 'lucide-react';
 import { useEmailStore } from '../store/emailStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -36,11 +35,13 @@ export function Sidebar() {
     loadFolders,
     setActiveAccount,
     setActiveFolder,
-    openCompose,
-    toggleSidebar,
   } = useEmailStore();
 
-  const { setSettingsOpen } = useSettingsStore();
+  const { theme, setSettingsOpen } = useSettingsStore();
+  const isDark = theme === 'dark';
+
+  const [expandedAccounts, setExpandedAccounts] = useState<Record<string, boolean>>({});
+  const [favoritesExpanded, setFavoritesExpanded] = useState(true);
 
   useEffect(() => {
     loadAccounts().then(() => {
@@ -48,172 +49,164 @@ export function Sidebar() {
     });
   }, [loadAccounts, loadFolders]);
 
-  const activeAccount = accounts.find((a) => a.id === activeAccountId);
+  // Auto-expand active account
+  useEffect(() => {
+    if (activeAccountId) {
+      setExpandedAccounts(prev => ({ ...prev, [activeAccountId]: true }));
+    }
+  }, [activeAccountId]);
+
+  const toggleAccountExpand = (id: string) => {
+    setExpandedAccounts(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Favorite folders: inbox, sent, drafts
+  const favoriteFolders = folders.filter(f => ['inbox', 'sent', 'drafts'].includes(f.type));
 
   if (sidebarCollapsed) {
-    return (
-      <div className="flex flex-col items-center w-16 bg-navy-900 dark:bg-navy-900 border-r border-navy-700/50 py-4 gap-3">
-        <button
-          onClick={toggleSidebar}
-          className="p-2 rounded-lg text-navy-400 hover:text-white hover:bg-navy-800"
-        >
-          <PanelLeft size={20} />
-        </button>
-        <button
-          onClick={() => openCompose()}
-          className="p-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white"
-        >
-          <Plus size={20} />
-        </button>
-        <div className="flex-1 flex flex-col gap-1 mt-2">
-          {folders.map((folder) => {
-            const Icon = FOLDER_ICONS[folder.icon] ?? Folder;
-            const isActive = folder.id === activeFolderId;
-            return (
-              <button
-                key={folder.id}
-                onClick={() => setActiveFolder(folder.id)}
-                className={`relative p-2.5 rounded-lg ${
-                  isActive
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-navy-400 hover:text-navy-200 hover:bg-navy-800'
-                }`}
-                title={folder.name}
-              >
-                <Icon size={20} />
-                {folder.unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-accent text-[10px] font-bold text-white rounded-full flex items-center justify-center">
-                    {folder.unreadCount > 9 ? '9+' : folder.unreadCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="p-2 rounded-lg text-navy-500 hover:text-navy-300 hover:bg-navy-800"
-          title="Settings"
-        >
-          <Settings size={20} />
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="flex flex-col w-64 min-w-[256px] bg-navy-900 dark:bg-navy-900 border-r border-navy-700/50">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-navy-700/50">
-        <h1 className="text-lg font-semibold text-white tracking-tight">Mail</h1>
+    <div
+      className={`flex flex-col w-56 min-w-[224px] border-r select-none ${
+        isDark
+          ? 'bg-old-surface border-old-border'
+          : 'bg-ol-bg border-ol-border'
+      }`}
+    >
+      {/* Favorites Section */}
+      <div className="pt-2">
         <button
-          onClick={toggleSidebar}
-          className="p-1.5 rounded-lg text-navy-400 hover:text-white hover:bg-navy-800"
+          onClick={() => setFavoritesExpanded(!favoritesExpanded)}
+          className={`w-full flex items-center gap-1 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider ${
+            isDark ? 'text-old-text-secondary hover:text-old-text' : 'text-ol-text-secondary hover:text-ol-text'
+          }`}
         >
-          <PanelLeftClose size={18} />
+          {favoritesExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          Favorites
         </button>
-      </div>
-
-      {/* Account Switcher */}
-      <div className="px-3 py-2">
-        <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-navy-800 group">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold"
-            style={{ backgroundColor: activeAccount?.color ?? '#3b82f6' }}
-          >
-            {activeAccount?.name?.charAt(0) ?? 'M'}
-          </div>
-          <div className="flex-1 text-left min-w-0">
-            <div className="text-sm font-medium text-navy-100 truncate">
-              {activeAccount?.name ?? 'Select Account'}
-            </div>
-            <div className="text-xs text-navy-500 truncate">
-              {activeAccount?.email ?? ''}
-            </div>
-          </div>
-          <ChevronDown size={16} className="text-navy-500 group-hover:text-navy-300" />
-        </button>
-
-        {/* Account list dropdown - simplified inline */}
-        {accounts.length > 1 && (
-          <div className="mt-1 space-y-0.5">
-            {accounts
-              .filter((a) => a.id !== activeAccountId)
-              .map((account) => (
-                <button
-                  key={account.id}
-                  onClick={() => setActiveAccount(account.id)}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-navy-400 hover:text-navy-200 hover:bg-navy-800"
-                >
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-semibold"
-                    style={{ backgroundColor: account.color }}
-                  >
-                    {account.name.charAt(0)}
-                  </div>
-                  <span className="text-sm truncate">{account.name}</span>
-                </button>
-              ))}
+        {favoritesExpanded && (
+          <div className="mt-0.5">
+            {favoriteFolders.map((folder) => (
+              <FolderItem
+                key={`fav-${folder.id}`}
+                folder={folder}
+                isActive={folder.id === activeFolderId}
+                isDark={isDark}
+                onClick={() => setActiveFolder(folder.id)}
+                isFavorite
+              />
+            ))}
           </div>
         )}
       </div>
 
-      {/* Compose Button */}
-      <div className="px-3 py-2">
-        <button
-          onClick={() => openCompose()}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-white font-medium rounded-xl transition-colors shadow-lg shadow-accent/20"
-        >
-          <Plus size={18} />
-          <span>Compose</span>
-        </button>
-      </div>
+      {/* Account Sections */}
+      <div className="flex-1 overflow-y-auto mt-2">
+        {accounts.map((account) => {
+          const isExpanded = expandedAccounts[account.id] ?? false;
+          const accountFolders = folders.filter(f => f.accountId === account.id);
+          const isActive = account.id === activeAccountId;
 
-      {/* Folders */}
-      <nav className="flex-1 px-3 py-1 overflow-y-auto">
-        <div className="space-y-0.5">
-          {folders.map((folder) => {
-            const Icon = FOLDER_ICONS[folder.icon] ?? Folder;
-            const isActive = folder.id === activeFolderId;
-            return (
+          return (
+            <div key={account.id} className="mb-1">
+              {/* Account header */}
               <button
-                key={folder.id}
-                onClick={() => setActiveFolder(folder.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-navy-400 hover:text-navy-200 hover:bg-navy-800'
+                onClick={() => {
+                  toggleAccountExpand(account.id);
+                  if (!isActive) setActiveAccount(account.id);
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-[12px] font-semibold ${
+                  isDark
+                    ? 'text-old-text hover:bg-old-hover'
+                    : 'text-ol-text hover:bg-ol-hover'
                 }`}
               >
-                <Icon size={18} />
-                <span className="flex-1 text-left">{folder.name}</span>
-                {folder.unreadCount > 0 && (
-                  <span
-                    className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      isActive
-                        ? 'bg-accent/20 text-accent'
-                        : 'bg-navy-800 text-navy-400'
-                    }`}
-                  >
-                    {folder.unreadCount}
-                  </span>
-                )}
+                {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: account.color }}
+                />
+                <span className="truncate">{account.name}</span>
               </button>
-            );
-          })}
-        </div>
-      </nav>
 
-      {/* Settings */}
-      <div className="px-3 py-3 border-t border-navy-700/50">
+              {/* Account folders */}
+              {isExpanded && (
+                <div>
+                  {accountFolders.map((folder) => (
+                    <FolderItem
+                      key={folder.id}
+                      folder={folder}
+                      isActive={folder.id === activeFolderId}
+                      isDark={isDark}
+                      onClick={() => setActiveFolder(folder.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Settings at bottom */}
+      <div className={`border-t py-1 ${isDark ? 'border-old-border' : 'border-ol-border'}`}>
         <button
           onClick={() => setSettingsOpen(true)}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-navy-500 hover:text-navy-300 hover:bg-navy-800 transition-colors"
+          className={`w-full flex items-center gap-2 px-4 py-1.5 text-[12px] ${
+            isDark
+              ? 'text-old-text-secondary hover:text-old-text hover:bg-old-hover'
+              : 'text-ol-text-secondary hover:text-ol-text hover:bg-ol-hover'
+          }`}
         >
-          <Settings size={18} />
+          <Settings size={14} />
           <span>Settings</span>
         </button>
       </div>
     </div>
+  );
+}
+
+function FolderItem({
+  folder,
+  isActive,
+  isDark,
+  onClick,
+  isFavorite,
+}: {
+  folder: { id: string; name: string; icon: string; unreadCount: number; type: string };
+  isActive: boolean;
+  isDark: boolean;
+  onClick: () => void;
+  isFavorite?: boolean;
+}) {
+  const Icon = isFavorite && folder.type === 'inbox' ? Star : (FOLDER_ICONS[folder.icon] ?? Folder);
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 px-4 py-[5px] text-[13px] ${
+        isFavorite ? 'pl-6' : 'pl-8'
+      } ${
+        isActive
+          ? isDark
+            ? 'bg-old-selected text-accent font-medium border-l-2 border-accent'
+            : 'bg-ol-selected text-accent font-medium border-l-2 border-accent'
+          : isDark
+            ? 'text-old-text-secondary hover:bg-old-hover'
+            : 'text-ol-text-secondary hover:bg-ol-hover'
+      }`}
+    >
+      <Icon size={15} className={isActive ? 'text-accent' : ''} />
+      <span className="flex-1 text-left truncate">{folder.name}</span>
+      {folder.unreadCount > 0 && (
+        <span className={`text-[11px] font-semibold ${
+          isActive ? 'text-accent' : isDark ? 'text-old-text-secondary' : 'text-ol-text-secondary'
+        }`}>
+          {folder.unreadCount}
+        </span>
+      )}
+    </button>
   );
 }

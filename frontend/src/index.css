@@ -1,65 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  --color-navy-900: #0f172a;
-  --color-navy-800: #1e293b;
-  --color-navy-700: #334155;
-  --color-navy-600: #475569;
-  --color-navy-500: #64748b;
-  --color-navy-400: #94a3b8;
-  --color-navy-300: #cbd5e1;
-  --color-navy-200: #e2e8f0;
-  --color-navy-100: #f1f5f9;
-  --color-navy-50: #f8fafc;
-  --color-accent: #3b82f6;
-  --color-accent-hover: #2563eb;
-  --color-accent-light: #60a5fa;
-  --color-danger: #ef4444;
-  --color-warning: #f59e0b;
-  --color-success: #22c55e;
+  /* Outlook Light Theme */
+  --color-ol-bg: #f5f5f5;
+  --color-ol-surface: #ffffff;
+  --color-ol-surface-alt: #fafafa;
+  --color-ol-border: #e0e0e0;
+  --color-ol-border-subtle: #ededed;
+  --color-ol-text: #242424;
+  --color-ol-text-secondary: #616161;
+  --color-ol-text-tertiary: #8a8a8a;
+  --color-ol-hover: #f0f0f0;
+  --color-ol-selected: #e8f0fe;
+  --color-ol-selected-border: #0078d4;
+
+  /* Outlook Dark Theme */
+  --color-old-bg: #1f1f1f;
+  --color-old-surface: #2d2d2d;
+  --color-old-surface-alt: #383838;
+  --color-old-border: #404040;
+  --color-old-border-subtle: #363636;
+  --color-old-text: #e0e0e0;
+  --color-old-text-secondary: #a0a0a0;
+  --color-old-text-tertiary: #707070;
+  --color-old-hover: #383838;
+  --color-old-selected: #0e3a5c;
+  --color-old-selected-border: #0078d4;
+
+  /* Accent colors */
+  --color-accent: #0078d4;
+  --color-accent-hover: #106ebe;
+  --color-accent-light: #2b88d8;
+  --color-danger: #d13438;
+  --color-warning: #f7630c;
+  --color-success: #107c10;
+
+  /* Navy kept for backward compat with store references */
+  --color-navy-900: #1f1f1f;
+  --color-navy-800: #2d2d2d;
+  --color-navy-700: #404040;
+  --color-navy-600: #525252;
+  --color-navy-500: #707070;
+  --color-navy-400: #a0a0a0;
+  --color-navy-300: #c8c8c8;
+  --color-navy-200: #e0e0e0;
+  --color-navy-100: #f0f0f0;
+  --color-navy-50: #fafafa;
 }
 
 html {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-.dark ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.dark ::-webkit-scrollbar-track {
-  background: transparent;
-}
-.dark ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
-}
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-[contenteditable]:empty:before {
-  content: attr(data-placeholder);
-  color: #94a3b8;
-  pointer-events: none;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 body {
@@ -71,4 +65,66 @@ body {
 #root {
   width: 100%;
   height: 100vh;
+}
+
+/* Light mode scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c8c8c8;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Dark mode scrollbars */
+.dark ::-webkit-scrollbar-thumb {
+  background: #505050;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #707070;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Content editable placeholder */
+[contenteditable]:empty:before {
+  content: attr(data-placeholder);
+  color: #8a8a8a;
+  pointer-events: none;
+}
+
+.dark [contenteditable]:empty:before {
+  color: #707070;
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+  outline: 2px solid #0078d4;
+  outline-offset: -2px;
+  border-radius: 2px;
+}
+
+/* Outlook-style transitions */
+* {
+  transition-property: background-color, border-color, color, opacity;
+  transition-duration: 100ms;
+  transition-timing-function: ease-out;
+}
+
+/* Override for elements that should not have transitions */
+[contenteditable], input, textarea, select, .no-transition {
+  transition: none;
 }

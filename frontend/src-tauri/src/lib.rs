@@ -1,8 +1,11 @@
 pub mod ai;
+pub mod autodiscover;
 pub mod commands;
 pub mod crypto;
 pub mod db;
 pub mod email;
+pub mod rules;
+pub mod shortcuts;
 
 use commands::AppState;
 use db::Database;
@@ -34,10 +37,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Account commands
             commands::add_account,
             commands::remove_account,
             commands::list_accounts,
             commands::test_connection,
+            // Auto-discover & quick setup
+            commands::auto_discover_email,
+            commands::quick_add_account,
+            // Email commands
             commands::sync_emails,
             commands::get_emails,
             commands::get_email,
@@ -47,8 +55,34 @@ pub fn run() {
             commands::delete_email,
             commands::move_email,
             commands::search_emails,
+            commands::search_emails_filtered,
+            // Threading
+            commands::get_threads,
+            commands::get_thread_messages,
+            // Categories & Flags
+            commands::set_category,
+            commands::set_flag,
+            commands::get_categories,
+            // Rules / Filters
+            commands::create_rule,
+            commands::update_rule,
+            commands::delete_rule,
+            commands::list_rules,
+            commands::reorder_rules,
+            // Snooze
+            commands::snooze_email,
+            commands::unsnooze_email,
+            // Schedule Send
+            commands::schedule_send,
+            commands::list_scheduled,
+            commands::cancel_scheduled,
+            // Keyboard Shortcuts
+            commands::get_shortcuts,
+            commands::set_shortcuts,
+            // Folders
             commands::get_folders,
             commands::sync_folders,
+            // AI commands
             commands::summarize_email,
             commands::categorize_emails,
             commands::prioritize_emails,

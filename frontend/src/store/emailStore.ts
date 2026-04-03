@@ -9,6 +9,8 @@ import type {
   Priority,
   SortOption,
   SortDirection,
+  InboxTab,
+  SearchFilter,
 } from '../types';
 import { api } from '../lib/tauri';
 
@@ -20,12 +22,17 @@ interface EmailState {
   activeFolderId: string | null;
   emails: Email[];
   selectedEmailId: string | null;
+  selectedEmailIds: string[];
   contacts: Contact[];
 
   // Search & Sort
   searchQuery: string;
+  searchFilters: SearchFilter;
   sortBy: SortOption;
   sortDirection: SortDirection;
+
+  // Inbox tabs
+  activeInboxTab: InboxTab;
 
   // Compose
   compose: ComposeState;
@@ -36,6 +43,8 @@ interface EmailState {
   // UI
   sidebarCollapsed: boolean;
   isLoading: boolean;
+  lastSyncTime: Date | null;
+  connectionStatus: 'connected' | 'syncing' | 'offline';
 
   // Actions - Data
   loadAccounts: () => Promise<void>;
@@ -44,19 +53,24 @@ interface EmailState {
   setActiveFolder: (id: string) => void;
   loadEmails: (folderId?: string) => Promise<void>;
   selectEmail: (id: string | null) => void;
+  toggleEmailSelection: (id: string) => void;
+  clearSelection: () => void;
   loadContacts: () => Promise<void>;
   refreshEmails: () => Promise<void>;
 
   // Actions - Email operations
   starEmail: (id: string) => void;
+  flagEmail: (id: string) => void;
   deleteEmail: (id: string) => void;
   moveEmail: (id: string, folderId: string) => void;
   markRead: (id: string, read: boolean) => void;
 
   // Actions - Search & Sort
   setSearchQuery: (query: string) => void;
+  setSearchFilters: (filters: SearchFilter) => void;
   setSortBy: (sort: SortOption) => void;
   setSortDirection: (dir: SortDirection) => void;
+  setActiveInboxTab: (tab: InboxTab) => void;
 
   // Actions - Compose
   openCompose: (mode?: ComposeState['mode'], replyToId?: string) => void;
@@ -80,6 +94,8 @@ interface EmailState {
   // Derived
   getFilteredEmails: () => Email[];
   getSelectedEmail: () => Email | undefined;
+  getUnreadCount: () => number;
+  getTotalCount: () => number;
 }
 
 const defaultCompose: ComposeState = {
@@ -92,6 +108,7 @@ const defaultCompose: ComposeState = {
   body: '',
   attachments: [],
   mode: 'new',
+  importance: 'normal',
 };
 
 const defaultAI: AIPanelState = {
@@ -113,14 +130,19 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   activeFolderId: null,
   emails: [],
   selectedEmailId: null,
+  selectedEmailIds: [],
   contacts: [],
   searchQuery: '',
+  searchFilters: {},
   sortBy: 'date',
   sortDirection: 'desc',
+  activeInboxTab: 'focused',
   compose: { ...defaultCompose },
   ai: { ...defaultAI },
   sidebarCollapsed: false,
   isLoading: false,
+  lastSyncTime: null,
+  connectionStatus: 'connected',
 
   loadAccounts: async () => {
     const accounts = await api.getAccounts();
@@ -153,9 +175,11 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   loadEmails: async (folderId) => {
-    set({ isLoading: true });
+    set({ isLoading: true, connectionStatus: 'syncing' });
     const emails = await api.getEmails(folderId);
-    set({ emails, isLoading: false });
+    // Add isFlagged default
+    const enriched = emails.map(e => ({ ...e, isFlagged: e.isFlagged ?? false }));
+    set({ emails: enriched, isLoading: false, connectionStatus: 'connected', lastSyncTime: new Date() });
   },
 
   selectEmail: (id) => {
@@ -167,6 +191,17 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       }
     }
   },
+
+  toggleEmailSelection: (id) => {
+    set((state) => {
+      const ids = state.selectedEmailIds.includes(id)
+        ? state.selectedEmailIds.filter(i => i !== id)
+        : [...state.selectedEmailIds, id];
+      return { selectedEmailIds: ids };
+    });
+  },
+
+  clearSelection: () => set({ selectedEmailIds: [] }),
 
   loadContacts: async () => {
     const contacts = await api.getContacts();
@@ -188,6 +223,14 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     }));
     const email = get().emails.find((e) => e.id === id);
     if (email) api.starEmail(id, email.isStarred);
+  },
+
+  flagEmail: (id) => {
+    set((state) => ({
+      emails: state.emails.map((e) =>
+        e.id === id ? { ...e, isFlagged: !e.isFlagged } : e
+      ),
+    }));
   },
 
   deleteEmail: (id) => {
@@ -216,12 +259,14 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setSearchFilters: (searchFilters) => set({ searchFilters }),
   setSortBy: (sortBy) => set({ sortBy }),
   setSortDirection: (sortDirection) => set({ sortDirection }),
+  setActiveInboxTab: (activeInboxTab) => set({ activeInboxTab }),
 
   openCompose: (mode = 'new', replyToId) => {
     const state = get();
-    let composeState: ComposeState = {
+    const composeState: ComposeState = {
       ...defaultCompose,
       isOpen: true,
       mode,
@@ -333,7 +378,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
   getFilteredEmails: () => {
-    const { emails, searchQuery, sortBy, sortDirection } = get();
+    const { emails, searchQuery, sortBy, sortDirection, searchFilters } = get();
     let filtered = [...emails];
 
     if (searchQuery) {
@@ -345,6 +390,20 @@ export const useEmailStore = create<EmailState>((set, get) => ({
           e.from.email.toLowerCase().includes(q) ||
           e.preview.toLowerCase().includes(q)
       );
+    }
+
+    if (searchFilters.isUnread) {
+      filtered = filtered.filter(e => !e.isRead);
+    }
+    if (searchFilters.isFlagged) {
+      filtered = filtered.filter(e => e.isFlagged);
+    }
+    if (searchFilters.hasAttachment) {
+      filtered = filtered.filter(e => e.hasAttachments);
+    }
+    if (searchFilters.from) {
+      const f = searchFilters.from.toLowerCase();
+      filtered = filtered.filter(e => e.from.email.toLowerCase().includes(f) || e.from.name.toLowerCase().includes(f));
     }
 
     filtered.sort((a, b) => {
@@ -373,5 +432,13 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   getSelectedEmail: () => {
     const { emails, selectedEmailId } = get();
     return emails.find((e) => e.id === selectedEmailId);
+  },
+
+  getUnreadCount: () => {
+    return get().emails.filter(e => !e.isRead).length;
+  },
+
+  getTotalCount: () => {
+    return get().emails.length;
   },
 }));
