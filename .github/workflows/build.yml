@@ -70,9 +70,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ''
         with:
           projectPath: frontend
+          tauriScript: npx tauri
           args: --target ${{ matrix.target }}
 
       - name: Upload Linux artifacts
